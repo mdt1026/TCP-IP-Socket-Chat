@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::io::Read;
 use std::io::Write;
 use clap::Parser;
+use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -16,12 +17,32 @@ struct Args {
     port: u32,
 }
 
+fn handle_broadcast(message: String) -> () {
+    
+}
+
+fn parse_input(steam: TcpStream) -> () {
+    match stream.read(&mut buffer) {
+        Ok(0) => unimplemented!("TODO client disconnected"),
+        Ok(n) => {
+            let message = String::from_utf8_lossy(&buffer[0..n]);
+            if message[0] == '/' {
+                // Handle Commands
+                unimplemented("Handle commands")
+            }
+            unimplemented!("broadcast message")
+        },
+        Err(n) => {
+            unimplemented!("Handle errors")
+        }
+}
+
 fn main() -> io::Result<()> {
     let args = Args::parse();
     let ip = format!("{}:{}", args.ip, args.port);
 
     let listener = TcpListener::bind(ip)?;
-    let shared_streams: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(vec![]));
+    let shared_streams: Arc<Mutex<HashMap<String, Vec<TcpStream>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         match listener.accept() {
