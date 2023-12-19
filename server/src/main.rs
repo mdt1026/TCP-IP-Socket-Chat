@@ -5,9 +5,22 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::io::Read;
 use std::io::Write;
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    ip: String,
+    #[arg(short, long)]
+    port: u32,
+}
 
 fn main() -> io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:34255")?;
+    let args = Args::parse();
+    let ip = format!("{}:{}", args.ip, args.port);
+
+    let listener = TcpListener::bind(ip)?;
     let shared_streams: Arc<Mutex<Vec<TcpStream>>> = Arc::new(Mutex::new(vec![]));
 
     loop {
