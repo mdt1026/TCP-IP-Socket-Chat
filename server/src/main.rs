@@ -7,6 +7,8 @@ use std::io::Read;
 use std::io::Write;
 use clap::Parser;
 use std::collections::HashMap;
+use lazy_static::lazy_static;
+use std::net::SocketAddr;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -17,11 +19,54 @@ struct Args {
     port: u32,
 }
 
-fn handle_broadcast(message: String) -> () {
-    
+type Chatroom = Vec<SocketAddr>;
+
+lazy_static! {
+    static ref SHARED_STREAMS: Arc<Mutex<HashMap<String, Chatroom>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref USERS: Arc<Mutex<HashMap<SocketAddr, String>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
-fn parse_input(stream: TcpStream) -> () {
+fn handle_broadcast(message: String) -> () {
+ 
+}
+
+fn handle_join(chatroom: String, stream: TcpStream) -> Result<(), &'static str> {
+    let s = &SHARED_STREAMS.lock().unwrap();
+    match s.get(&chatroom) {
+        Some(users) => {
+            if users.contains(&stream.peer_addr().unwrap()) {
+                return Err("User already exists")
+            };
+            users.push(stream.peer_addr().unwrap());
+            Ok(())
+        },
+        None => {
+            s.insert(chatroom, vec![]);
+            handle_join(chatroom, stream)
+        },
+    }
+}
+
+fn find_user_chatroom(stream: TcpStream) -> Result<Chatroom, &'static str> {
+    let s = &SHARED_STREAMS.lock().unwrap();
+    let addr = stream.peer_addr().unwrap();
+    for (chat_name, chatroom) in s.into_iter() {
+        if chatroom.contains(&addr) {
+            return Ok(chatroom);
+        }
+    }
+    return Err("User is not in a chatroom");
+}
+
+fn handle_disconnect(stream: TcpStream) -> Result<(), &'static str> {
+    // Remove user from shared streams
+    let s = &SHARED_STREAMS.lock().unwrap();
+    let chatroom = find_user_chatroom(stream).unwrap();
+    s.remove(&chatroom);
+    Ok(())
+}
+
+fn parse_input(mut stream: TcpStream) -> () {
     let mut buffer = [0, 1024];
     match &stream.read(&mut buffer) {
         Ok(0) => unimplemented!("TODO client disconnected"),
