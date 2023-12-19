@@ -21,20 +21,37 @@ fn handle_broadcast(message: String) -> () {
     
 }
 
-fn parse_input(steam: TcpStream) -> () {
-    match stream.read(&mut buffer) {
+fn parse_input(stream: TcpStream) -> () {
+    let mut buffer = [0, 1024];
+    match &stream.read(&mut buffer) {
         Ok(0) => unimplemented!("TODO client disconnected"),
         Ok(n) => {
-            let message = String::from_utf8_lossy(&buffer[0..n]);
-            if message[0] == '/' {
+            let message = String::from_utf8_lossy(&buffer[0..*n]);
+            if message.chars().next().unwrap() == '/' {
                 // Handle Commands
-                unimplemented("Handle commands")
+                let s = &message[1..];
+                let (command, args): (&str, &str) = s.rsplit_once('|').unwrap();
+                let args_vec: Vec<&str> = args.split(' ').collect();
+                match command {
+                    "join" => {
+                        // Add stream to handler function call
+                        // handle_join(args_vec[0].to_string(), ;
+                        assert!(args_vec.len() > 0);
+                        unimplemented!("join command handler")
+                    },
+                    "disconnect" => unimplemented!("disconnect command handler"),
+                    "list" => unimplemented!("list command handler"),
+                    "users" => unimplemented!("users command handler"),
+                    "leave" => unimplemented!("leavel command handler")
+                }
+            } else {
+                unimplemented!("broadcast message")
             }
-            unimplemented!("broadcast message")
         },
         Err(n) => {
             unimplemented!("Handle errors")
         }
+    }
 }
 
 fn main() -> io::Result<()> {
