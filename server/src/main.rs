@@ -32,17 +32,19 @@ fn handle_broadcast(message: String) -> () {
 }
 
 fn handle_join(chatroom: String, stream: TcpStream) -> Result<(), &'static str> {
-    let s = &SHARED_STREAMS.lock().unwrap();
+    let s = &mut SHARED_STREAMS.lock().unwrap();
     match s.get(&chatroom) {
-        Some(users) => {
+        Some(&ref users) => {
             if users.contains(&stream.peer_addr().unwrap()) {
                 return Err("User already exists")
             };
-            users.push(stream.peer_addr().unwrap());
+            let mut new_users = users.clone();
+            new_users.push(stream.peer_addr().unwrap());
+            s.get(&chatroom).replace(&new_users);
             Ok(())
         },
         None => {
-            s.insert(chatroom, vec![]);
+            s.insert(chatroom.clone(), vec![]);
             handle_join(chatroom, stream)
         },
     }
@@ -61,17 +63,17 @@ fn find_user_chatroom(stream: TcpStream) -> Result<(String, Chatroom), &'static 
 
 fn handle_disconnect(stream: TcpStream) -> Result<(), &'static str> {
     // Remove user from shared streams
-    let s = &SHARED_STREAMS.lock().unwrap();
-    let chatroom = find_user_chatroom(stream).unwrap();
+    let s = &mut SHARED_STREAMS.lock().unwrap();
+    let chatroom = find_user_chatroom(stream.try_clone().unwrap()).unwrap();
     let addr = &stream.peer_addr().unwrap();
 
-    let mut users = chatroom.1;
+    let users = chatroom.1;
 
     let index = users.iter().position(|n| n == addr).unwrap();
-    s[&chatroom.0] = users;
+    s.insert(chatroom.0, users);
 
     // Remove user from users list
-    let u = &USERS.lock().unwrap();
+    let u = &mut USERS.lock().unwrap();
     u.remove(addr);
 
     Ok(())
