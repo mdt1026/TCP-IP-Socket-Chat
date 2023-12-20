@@ -164,6 +164,19 @@ fn handle_nick(stream: &TcpStream, nick: String) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn handle_help(stream: &TcpStream) -> Result<(), &'static str> {
+    let s = SHARED_STREAMS.lock().unwrap();
+    let message = "Commands:\n\
+                    \t\\help\n\
+                    \t\\join <channel_name>\n\
+                    \t\\disconnect\n\
+                    \t\\list\n\
+                    \t\\users\n\
+                    \t\\leave\n\
+                    \t\\nick <new_nick>";
+    send_message(stream, message).unwrap();
+    Ok(())
+
 fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), &'static str> {
     let mut buffer = [0; 1024];
 
@@ -181,7 +194,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
             if message.chars().next().unwrap() == '/' {
                 // Handle Commands
                 let s = &message[1..message.len()-1];
-                let (command, args): (&str, &str) = s.split_once(' ').unwrap();
+                let (command, args): (&str, &str) = s.split_once(' ').unwrap_or((s, ""));
                 let args_vec: Vec<&str> = args.split(' ').collect();
                 match command {
                     "join" => {
@@ -221,6 +234,11 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                         }
                         Ok(handle_nick(stream, args_vec[0].to_string())?) 
                     }
+                    "help" => {
+                        if args_vec.len() != 0 {
+                            return Err("Incorrect args passed into the help command");
+                        }
+                        Ok(handle_help(stream)?)
                     other => {
                         println!("Unknown command: {}", other);
                         Err("Unknown command")
