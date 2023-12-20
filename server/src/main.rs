@@ -196,7 +196,12 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                 // Handle Commands
                 let s = &message[1..message.len()-1];
                 let (command, args): (&str, &str) = s.split_once(' ').unwrap_or((s, ""));
-                let args_vec: Vec<&str> = args.split(' ').collect();
+                let args_vec: Vec<&str>;
+                if args == "" {
+                    args_vec = Vec::new();
+                } else {
+                    args_vec = args.split(' ').collect();
+                }
                 match command {
                     "join" => {
                         if args_vec.len() != 1 {
@@ -225,7 +230,8 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                     },
                     "leave" => {
                         if args_vec.len() != 0 {
-                            return Err("Incorrect args passed to the users command");
+                            println!("{:?}", args_vec);
+                            return Err("Incorrect args passed to the leave command");
                         }
                         Ok(handle_leave(stream, connections)?)
                     },
