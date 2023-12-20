@@ -260,7 +260,7 @@ fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
                     }
                 }
             } else {
-                Ok(handle_broadcast(stream, message.to_string())?)
+                Ok(handle_broadcast(stream, message.strip_suffix("\n").unwrap_or(&message.to_string()).to_string())?)
             }
         },
         Err(n) => {
