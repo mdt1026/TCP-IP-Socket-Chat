@@ -4,23 +4,22 @@ use std::io::{Read, Write};
 use std::thread;
 
 fn main() -> io::Result<()> {
-    let server_address = "127.0.0.1:34255";
+    let server_address = "127.0.0.1:34256";
     let mut stream = TcpStream::connect(server_address)?;
 
-    let mut stream_clone = stream.try_clone()?;  // Create a clone for the main thread.
-
     // Spawn a thread to read messages from the server.
+    let mut read_stream = stream.try_clone().unwrap();
     thread::spawn(move || {
         let mut buffer = [0; 1024];
         loop {
-            match stream.read(&mut buffer) {
+            match read_stream.read(&mut buffer) {
                 Ok(0) => {
                     println!("Server disconnected");
                     break;
                 }
                 Ok(n) => {
                     let message = String::from_utf8_lossy(&buffer[0..n]);
-                    println!("Received: {}", message);
+                    println!("{}", message);
                 }
                 Err(e) => {
                     eprintln!("Error reading from server: {}", e);
@@ -34,9 +33,7 @@ fn main() -> io::Result<()> {
     let mut input = String::new();
     loop {
         io::stdin().read_line(&mut input)?;
-        stream_clone.write_all(input.as_bytes())?;
+        stream.write_all(input.as_bytes())?;
         input.clear();
-    }
-
-    Ok(())
+   }
 }
