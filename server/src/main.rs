@@ -11,6 +11,7 @@ use lazy_static::lazy_static;
 use std::net::SocketAddr;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::mem::drop;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -32,9 +33,8 @@ fn addr_to_username(addr: &SocketAddr) -> Result<String, &'static str> {
     Ok(u.get(addr).unwrap().to_string())
 }
 
-fn handle_server_announcement(chatroom: String, message: String) -> Result<(), &'static str> {
-    let s = SHARED_STREAMS.lock().unwrap();
-    match s.get(&chatroom) {
+fn handle_server_announcement(chatroom: String, message: String, shared_streams: &HashMap<String, Chatroom>) -> Result<(), &'static str> {
+    match shared_streams.get(&chatroom) {
         Some(&ref users) => {
             for user in users {
                 send_message(
@@ -64,26 +64,24 @@ fn handle_broadcast(stream: &TcpStream, message: String) -> Result<(), &'static 
 
 fn handle_join(chatroom: String, stream: &TcpStream) -> Result<(), &'static str> {
     let s = &mut SHARED_STREAMS.lock().unwrap();
-    match s.get(&chatroom) {
-        Some(&ref users) => {
-            if users.contains(&stream.peer_addr().unwrap()) {
-                return Err("User already exists")
-            };
-            let mut new_users = users.clone();
-            new_users.push(stream.peer_addr().unwrap());
-            s.get(&chatroom).replace(&new_users);
-            handle_server_announcement(chatroom, 
-                                       format!(
-                                           "{} has joined the chatroom.",
-                                           addr_to_username(&stream.peer_addr().unwrap()).unwrap()
-                                               )
-                                       ).unwrap();
-            Ok(())
-        },
-        None => {
-            s.insert(chatroom.clone(), vec![]);
-            handle_join(chatroom, stream)
-        },
+    loop {
+        match s.get(&chatroom) {
+            Some(&ref users) => {
+                if users.contains(&stream.peer_addr().unwrap()) {
+                    return Err("User already exists")
+                };
+                let mut new_users = users.clone();
+                new_users.push(stream.peer_addr().unwrap());
+                *(s.get_mut(&chatroom).unwrap()) = new_users;
+                let announcement_message = format!("{} has joined the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
+                handle_server_announcement(chatroom, announcement_message, s).unwrap();
+                return Ok(());
+            },
+            None => {
+                s.insert(chatroom.clone(), vec![]);
+                continue;
+            },
+        }
     }
 }
 
@@ -115,13 +113,10 @@ fn remove_user_from_streams(stream: &TcpStream) -> Result<String, &'static str> 
 }
 
 fn handle_leave(stream: &TcpStream) -> Result<(), &'static str> {
+    let s = &mut SHARED_STREAMS.lock().unwrap();
     let chatroom = remove_user_from_streams(stream).unwrap();
-    handle_server_announcement(chatroom, 
-                                       format!(
-                                           "{} has joined the chatroom.",
-                                           addr_to_username(&stream.peer_addr().unwrap()).unwrap()
-                                               )
-                                       ).unwrap();
+    let announcement_message = format!("{} has left the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
+    handle_server_announcement(chatroom, announcement_message, s).unwrap();
     Ok(())
 }
 
@@ -162,6 +157,9 @@ fn handle_nick(stream: &TcpStream, nick: String) -> Result<(), &'static str> {
 
 fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
     let mut buffer = [0; 1024];
+    println!("State");
+    println!("{:?}", SHARED_STREAMS.lock().unwrap());
+    println!("{:?}", USERS.lock().unwrap());
     match stream.read(&mut buffer) {
 
         // Client has disconnected
