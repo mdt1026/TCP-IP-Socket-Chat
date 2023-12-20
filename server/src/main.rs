@@ -146,9 +146,12 @@ fn handle_disconnect(stream: &TcpStream) -> Result<(), &'static str> {
 }
 
 fn handle_list(stream: &TcpStream) -> Result<(), &'static str> {
+    println!("Attempting to generate list");
     let s = &SHARED_STREAMS.lock().unwrap();
     let message = s.keys().into_iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
+    println!("{}", message);
     send_message(stream, message)?;
+    println!("Done!");
     Ok(())
 }
 
@@ -282,8 +285,6 @@ fn add_user_listener(ip: String) -> io::Result<()> {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
-                println!("Accepting a new connection");
-
                 // Defualt username is a user hash. Add user to the USERS list
                 let addr = stream.peer_addr().unwrap();
                 let mut s = DefaultHasher::new();
@@ -302,8 +303,6 @@ fn add_user_listener(ip: String) -> io::Result<()> {
                         }
                     }
                 });
-
-                println!("Done");
             }
             Err(e) => {
                 eprintln!("Error accepting a client: {}", e);
