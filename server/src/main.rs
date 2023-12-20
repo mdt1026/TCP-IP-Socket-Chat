@@ -1,6 +1,5 @@
 use std::io;
 use std::net::{TcpListener, TcpStream};
-use std::os::fd::AsRawFd;
 use std::thread;
 use std::sync::{Arc, Mutex};
 use std::io::Read;
