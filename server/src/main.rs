@@ -9,6 +9,8 @@ use clap::Parser;
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 use std::net::SocketAddr;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -113,22 +115,19 @@ fn main() -> io::Result<()> {
     let ip = format!("{}:{}", args.ip, args.port);
 
     let listener = TcpListener::bind(ip)?;
-    let shared_streams: Arc<Mutex<HashMap<String, Vec<TcpStream>>>> = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
-                let shared_streams_clone = shared_streams.clone();
-
-                // Add the new client's stream to the shared_streams list.
-                {
-                    let mut shared_streams = shared_streams_clone.lock().unwrap();
-                    shared_streams.push(stream.try_clone().expect("Failed to clone the stream"));
-                }
+                let addr = stream.peer_addr().unwrap();
+                let mut s = DefaultHasher::new();
+                &addr.hash(&mut s);
+                let uid = s.finish();
+                USERS.lock().unwrap().insert(addr, format!("User{}", uid));
 
                 // Spawn a new thread to handle the client.
                 thread::spawn(move || {
-                    handle_client(&mut stream, shared_streams_clone);
+                    parse_input(stream);
                 });
             }
             Err(e) => {
