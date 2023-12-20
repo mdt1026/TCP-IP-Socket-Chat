@@ -161,19 +161,18 @@ fn handle_nick(stream: &TcpStream, nick: String) -> Result<(), &'static str> {
 }
 
 fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
-    let mut buffer = [0, 255];
-    match &stream.read(&mut buffer) {
+    let mut buffer = [0; 1024];
+    match stream.read(&mut buffer) {
 
         // Client has disconnected
         Ok(0) => Ok(handle_disconnect(stream).unwrap()),
 
         Ok(n) => {
-            let message = String::from_utf8_lossy(&buffer[0..*n]);
-            println!("{:?}", message);
+            let message = String::from_utf8_lossy(&buffer[0..n]);
             if message.chars().next().unwrap() == '/' {
                 // Handle Commands
-                let s = &message[1..];
-                let (command, args): (&str, &str) = s.rsplit_once('|').unwrap();
+                let s = &message[1..message.len()-1];
+                let (command, args): (&str, &str) = s.split_once(' ').unwrap();
                 let args_vec: Vec<&str> = args.split(' ').collect();
                 match command {
                     "join" => {
@@ -212,7 +211,10 @@ fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
                         }
                         Ok(handle_nick(stream, args_vec[0].to_string()).unwrap()) 
                     }
-                    other => Err("Unknown command")
+                    other => {
+                        println!("Unknown command: {}", other);
+                        Err("Unknown command")
+                    }
                 }
             } else {
                 Ok(handle_broadcast(stream, message.to_string()).unwrap())
