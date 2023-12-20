@@ -26,6 +26,7 @@ type Chatroom = Vec<SocketAddr>;
 lazy_static! {
     static ref SHARED_STREAMS: Arc<Mutex<HashMap<String, Chatroom>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref USERS: Arc<Mutex<HashMap<SocketAddr, String>>> = Arc::new(Mutex::new(HashMap::new()));
+    static ref CONNECTIONS: Arc<Mutex<HashMap<SocketAddr, &'static TcpStream>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 fn addr_to_username(addr: &SocketAddr) -> Result<String, &'static str> {
@@ -38,7 +39,7 @@ fn handle_server_announcement(chatroom: String, message: String, shared_streams:
         Some(&ref users) => {
             for user in users {
                 send_message(
-                    &TcpStream::connect(user).unwrap(),
+                    CONNECTIONS.lock().unwrap().get(user).unwrap(),
                     format!("[Server]: {}", message) 
                 ).unwrap();
             }
@@ -54,7 +55,7 @@ fn handle_broadcast(stream: &TcpStream, message: String) -> Result<(), &'static 
     for user in chatroom {
         if addr != user {
             send_message(
-                &TcpStream::connect(user).unwrap(),
+                CONNECTIONS.lock().unwrap().get(&user).unwrap(),
                 format!("[{}]: {}", addr_to_username(&addr).unwrap(), message) 
             ).unwrap();
         }
@@ -122,10 +123,15 @@ fn handle_leave(stream: &TcpStream) -> Result<(), &'static str> {
 
 fn handle_disconnect(stream: &TcpStream) -> Result<(), &'static str> {
     remove_user_from_streams(stream).unwrap();
+    let addr = &stream.peer_addr().unwrap();
 
     // Remove user from users list
     let u = &mut USERS.lock().unwrap();
-    u.remove(&stream.peer_addr().unwrap());
+    u.remove(addr).unwrap();
+
+    // Remove connection 
+    let c = &mut CONNECTIONS.lock().unwrap();
+    c.remove(addr).unwrap();
 
     Ok(())
 }
@@ -245,9 +251,13 @@ fn main() -> io::Result<()> {
                 &addr.hash(&mut s);
                 let uid = s.finish();
                 USERS.lock().unwrap().insert(addr, format!("User{}", uid));
+                
+                // Add users to connections
+                CONNECTIONS.lock().unwrap().insert(addr, &stream);
 
                 // Spawn a new thread to handle the client.
-                thread::spawn(move || {
+                thread::spawn(move || { // TODO need to make separate logic for handling each of
+                                        // the connections
                     match parse_input(&stream) {
                         Ok(_) => (),
                         Err(e) => send_message(&stream, e.to_string()).unwrap(),
