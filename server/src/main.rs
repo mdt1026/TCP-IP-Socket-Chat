@@ -194,7 +194,7 @@ fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
     match stream.read(&mut buffer) {
 
         // Client has disconnected
-        Ok(0) => panic!("Connection has disconnected"),
+        Ok(0) => Err("Disconnected"),
 
         Ok(n) => {
             let message = String::from_utf8_lossy(&buffer[0..n]);
@@ -296,6 +296,7 @@ fn add_user_listener(ip: String) -> io::Result<()> {
                 thread::spawn(move || {
                     loop {
                         match parse_input(&stream) {
+                            Err("Disconnected") => return,
                             Ok(_) => continue,
                             Err(e) => send_server_message(&stream, e.to_string()).unwrap(),
                         }
