@@ -174,8 +174,9 @@ fn handle_help(stream: &TcpStream) -> Result<(), &'static str> {
                     \t\\users\n\
                     \t\\leave\n\
                     \t\\nick <new_nick>";
-    send_message(stream, message).unwrap();
+    send_message(stream, message.to_string()).unwrap();
     Ok(())
+}
 
 fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), &'static str> {
     let mut buffer = [0; 1024];
@@ -239,6 +240,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                             return Err("Incorrect args passed into the help command");
                         }
                         Ok(handle_help(stream)?)
+                    }
                     other => {
                         println!("Unknown command: {}", other);
                         Err("Unknown command")
