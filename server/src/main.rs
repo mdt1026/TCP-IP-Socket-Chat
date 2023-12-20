@@ -64,6 +64,9 @@ fn handle_broadcast(stream: &TcpStream, message: String) -> Result<(), &'static 
 
 fn handle_join(chatroom: String, stream: &TcpStream) -> Result<(), &'static str> {
     let s = &mut SHARED_STREAMS.lock().unwrap();
+
+    // Hacky workaround to keep the mutex in this scope
+    // If the chatroom does not exist, add the chatroom, and the Some() match will be guaranteed
     loop {
         match s.get(&chatroom) {
             Some(&ref users) => {
@@ -151,7 +154,8 @@ fn handle_users(stream: &TcpStream) -> Result<(), &'static str> {
 
 fn handle_nick(stream: &TcpStream, nick: String) -> Result<(), &'static str> {
     let u = &mut USERS.lock().unwrap();
-    u.get(&stream.peer_addr().unwrap()).replace(&nick);
+    let addr = &stream.peer_addr().unwrap();
+    *(u.get_mut(addr).unwrap()) = nick; 
     Ok(())
 }
 
