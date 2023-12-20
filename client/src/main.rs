@@ -1,10 +1,21 @@
-use std::io;
+use std::{io, process};
 use std::net::TcpStream;
 use std::io::{Read, Write};
 use std::thread;
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    ip: String,
+    #[arg(short, long)]
+    port: u32,
+}
 
 fn main() -> io::Result<()> {
-    let server_address = "127.0.0.1:34257";
+    let args = Args::parse();
+    let server_address = format!("{}:{}", args.ip, args.port);
     let mut stream = TcpStream::connect(server_address)?;
 
     // Spawn a thread to read messages from the server.
@@ -14,8 +25,8 @@ fn main() -> io::Result<()> {
         loop {
             match read_stream.read(&mut buffer) {
                 Ok(0) => {
-                    println!("Server disconnected");
-                    break;
+                    println!("Disconnected from server");
+                    process::exit(0x0);
                 }
                 Ok(n) => {
                     let message = String::from_utf8_lossy(&buffer[0..n]);
