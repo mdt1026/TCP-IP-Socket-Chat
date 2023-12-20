@@ -35,6 +35,7 @@ fn addr_to_username(addr: &SocketAddr) -> Result<String, &'static str> {
 }
 
 fn handle_server_announcement(chatroom: String, message: String, shared_streams: &HashMap<String, Chatroom>, connections: &Connections) -> Result<(), &'static str> {
+    println!("Announcing");
     match shared_streams.get(&chatroom) {
         Some(&ref users) => {
             for user in users {
@@ -43,6 +44,7 @@ fn handle_server_announcement(chatroom: String, message: String, shared_streams:
                     format!("[Server]: {}", message) 
                 ).unwrap();
             }
+            println!("Done");
             Ok(())
         },
         None => Err("Chatroom does not exist")
@@ -69,7 +71,7 @@ fn handle_join(chatroom: String, stream: &TcpStream, connections: &Connections) 
     match s.get(&chatroom) {
         Some(&ref users) => {
             if users.contains(&stream.peer_addr().unwrap()) {
-                return Err("User already exists")
+                return Err("User is already in chatroom")
             };
             let mut new_users = users.clone();
             new_users.push(stream.peer_addr().unwrap());
@@ -186,6 +188,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                         if args_vec.len() != 1 {
                             return Err("Incorrect args passed to join command");
                         }
+                        println!("Executing join");
                         Ok(handle_join(args_vec[0].to_string(), stream, connections)?)
                     },
                     "disconnect" => {
@@ -233,6 +236,11 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
     }
 }
 
+
+fn send_server_message(stream: &TcpStream, mut message: String) -> Result<(), &'static str> {
+    message = format!("[Server]: {}", message);
+    Ok(send_message(stream, message)?)
+}
 fn send_message(mut stream: &TcpStream, message: String) -> Result<(), &'static str> {
     Ok(stream.write_all(message.as_bytes()).expect("Failed to write message"))
 }
@@ -273,7 +281,7 @@ fn main() -> io::Result<()> {
         for stream in connections.values().into_iter() {
             match parse_input(stream, &connections) {
                 Ok(_) => continue,
-                Err(e) => send_message(&stream, e.to_string()).unwrap(),
+                Err(e) => send_server_message(&stream, e.to_string()).unwrap(),
             }
         }
     }
