@@ -63,28 +63,25 @@ fn handle_broadcast(stream: &TcpStream, message: String) -> Result<(), &'static 
 }
 
 fn handle_join(chatroom: String, stream: &TcpStream) -> Result<(), &'static str> {
-    let s = &mut SHARED_STREAMS.lock().unwrap();
+    let mut s = SHARED_STREAMS.lock().unwrap();
 
-    // Hacky workaround to keep the mutex in this scope
-    // If the chatroom does not exist, add the chatroom, and the Some() match will be guaranteed
-    loop {
-        match s.get(&chatroom) {
-            Some(&ref users) => {
-                if users.contains(&stream.peer_addr().unwrap()) {
-                    return Err("User already exists")
-                };
-                let mut new_users = users.clone();
-                new_users.push(stream.peer_addr().unwrap());
-                *(s.get_mut(&chatroom).unwrap()) = new_users;
-                let announcement_message = format!("{} has joined the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
-                handle_server_announcement(chatroom, announcement_message, s).unwrap();
-                return Ok(());
-            },
-            None => {
-                s.insert(chatroom.clone(), vec![]);
-                continue;
-            },
-        }
+    match s.get(&chatroom) {
+        Some(&ref users) => {
+            if users.contains(&stream.peer_addr().unwrap()) {
+                return Err("User already exists")
+            };
+            let mut new_users = users.clone();
+            new_users.push(stream.peer_addr().unwrap());
+            *(s.get_mut(&chatroom).unwrap()) = new_users;
+            let announcement_message = format!("{} has joined the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
+            handle_server_announcement(chatroom, announcement_message, &s).unwrap();
+            return Ok(());
+        },
+        None => {
+            s.insert(chatroom.clone(), vec![]);
+            std::mem::drop(s);
+            handle_join(chatroom, stream)
+        },
     }
 }
 
