@@ -230,7 +230,6 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                     },
                     "leave" => {
                         if args_vec.len() != 0 {
-                            println!("{:?}", args_vec);
                             return Err("Incorrect args passed to the leave command");
                         }
                         Ok(handle_leave(stream, connections)?)
@@ -277,6 +276,8 @@ fn add_user_listener(ip: String) -> io::Result<()> {
     loop {
         match listener.accept() {
             Ok((stream, _)) => {
+                println!("Accepting a new connection");
+
                 // Defualt username is a user hash. Add user to the USERS list
                 let addr = stream.peer_addr().unwrap();
                 let mut s = DefaultHasher::new();
@@ -286,6 +287,8 @@ fn add_user_listener(ip: String) -> io::Result<()> {
                 
                 // Add users to connections
                 CONNECTIONS.lock().unwrap().insert(addr, stream);
+
+                println!("Done");
             }
             Err(e) => {
                 eprintln!("Error accepting a client: {}", e);
@@ -297,7 +300,6 @@ fn add_user_listener(ip: String) -> io::Result<()> {
 fn main() -> io::Result<()> {
     let args = Args::parse();
     let ip = format!("{}:{}", args.ip, args.port);
-
     thread::spawn(move || {
         add_user_listener(ip).unwrap();
     });
