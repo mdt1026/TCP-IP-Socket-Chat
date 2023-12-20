@@ -20,7 +20,6 @@ struct Args {
 }
 
 type Chatroom = Vec<SocketAddr>;
-
 lazy_static! {
     static ref SHARED_STREAMS: Arc<Mutex<HashMap<String, Chatroom>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref USERS: Arc<Mutex<HashMap<SocketAddr, String>>> = Arc::new(Mutex::new(HashMap::new()));
@@ -47,12 +46,12 @@ fn handle_join(chatroom: String, stream: TcpStream) -> Result<(), &'static str> 
     }
 }
 
-fn find_user_chatroom(stream: TcpStream) -> Result<Chatroom, &'static str> {
+fn find_user_chatroom(stream: TcpStream) -> Result<(String, Chatroom), &'static str> {
     let s = &SHARED_STREAMS.lock().unwrap();
     let addr = stream.peer_addr().unwrap();
     for (chat_name, chatroom) in s.into_iter() {
         if chatroom.contains(&addr) {
-            return Ok(chatroom);
+            return Ok((chat_name, chatroom));
         }
     }
     return Err("User is not in a chatroom");
@@ -62,7 +61,17 @@ fn handle_disconnect(stream: TcpStream) -> Result<(), &'static str> {
     // Remove user from shared streams
     let s = &SHARED_STREAMS.lock().unwrap();
     let chatroom = find_user_chatroom(stream).unwrap();
-    s.remove(&chatroom);
+    let addr = &stream.peer_addr().unwrap();
+
+    let mut users = chatroom.1;
+
+    let index = users.iter().position(|n| n == addr).unwrap();
+    s[&chatroom.0] = users;
+
+    // Remove user from users list
+    let u = &USERS.lock().unwrap();
+    u.remove(addr);
+
     Ok(())
 }
 
