@@ -8,7 +8,7 @@ use std::io::Write;
 use clap::Parser;
 use std::collections::HashMap;
 use lazy_static::lazy_static;
-use std::net::SocketAddr;
+use std::net::{Shutdown, SocketAddr};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -34,13 +34,13 @@ fn addr_to_username(addr: &SocketAddr) -> Result<String, &'static str> {
     Ok(u.get(addr).unwrap().to_string())
 }
 
-fn handle_server_announcement(chatroom: String, message: String, shared_streams: &HashMap<String, Chatroom>, connections: &Connections) -> Result<(), &'static str> {
-    println!("Announcing");
-    match shared_streams.get(&chatroom) {
+fn handle_server_announcement(chatroom: String, message: String) -> Result<(), &'static str> {
+    let s = SHARED_STREAMS.lock().unwrap();
+    match s.get(&chatroom) {
         Some(&ref users) => {
             for user in users {
                 send_message(
-                    connections.get(user).unwrap(),
+                    CONNECTIONS.lock().unwrap().get(user).unwrap(),
                     format!("[Server]: {}", message) 
                 ).unwrap();
             }
@@ -51,21 +51,21 @@ fn handle_server_announcement(chatroom: String, message: String, shared_streams:
     }
 }
 
-fn handle_broadcast(stream: &TcpStream, message: String, connections: &Connections) -> Result<(), &'static str> {
-    let (_, chatroom) = find_user_chatroom(stream).unwrap();
+fn handle_broadcast(stream: &TcpStream, message: String) -> Result<(), &'static str> {
+    let (_, chatroom) = find_user_chatroom(stream)?;
     let addr = stream.peer_addr().unwrap();
     for user in chatroom {
         if addr != user {
             send_message(
-                connections.get(&user).unwrap(),
-                format!("[{}]: {}", addr_to_username(&addr).unwrap(), message) 
+                CONNECTIONS.lock().unwrap().get(&user).unwrap(),
+                format!("[{}]: {}", addr_to_username(&addr)?, message) 
             ).unwrap();
         }
     }
     Ok(())
 }
 
-fn handle_join(chatroom: String, stream: &TcpStream, connections: &Connections) -> Result<(), &'static str> {
+fn handle_join(chatroom: String, stream: &TcpStream) -> Result<(), &'static str> {
     let mut s = SHARED_STREAMS.lock().unwrap();
 
     match s.get(&chatroom) {
@@ -76,14 +76,15 @@ fn handle_join(chatroom: String, stream: &TcpStream, connections: &Connections) 
             let mut new_users = users.clone();
             new_users.push(stream.peer_addr().unwrap());
             *(s.get_mut(&chatroom).unwrap()) = new_users;
-            let announcement_message = format!("{} has joined the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
-            handle_server_announcement(chatroom, announcement_message, &s, connections).unwrap();
+            let announcement_message = format!("{} has joined the chatroom.", addr_to_username(&stream.peer_addr().unwrap())?);
+            std::mem::drop(s);
+            handle_server_announcement(chatroom, announcement_message)?;
             return Ok(());
         },
         None => {
             s.insert(chatroom.clone(), vec![]);
             std::mem::drop(s);
-            handle_join(chatroom, stream, connections)
+            handle_join(chatroom, stream)
         },
     }
 }
@@ -103,36 +104,42 @@ fn find_user_chatroom(stream: &TcpStream) -> Result<(String, Chatroom), &'static
  * Returns the chatroom name that the user left from
  */
 fn remove_user_from_streams(stream: &TcpStream) -> Result<String, &'static str> {
-    let s = &mut SHARED_STREAMS.lock().unwrap();
-    let chatroom = find_user_chatroom(&stream.try_clone().unwrap()).unwrap();
+    let chatroom = find_user_chatroom(&stream.try_clone().unwrap())?;
     let addr = &stream.peer_addr().unwrap();
 
     let mut users = chatroom.1;
     let index = users.iter().position(|n| n == addr).unwrap();
     users.remove(index);
 
+    let mut s = SHARED_STREAMS.lock().unwrap();
     s.insert(chatroom.0.clone(), users);
     Ok(chatroom.0)
 }
 
-fn handle_leave(stream: &TcpStream, connections: &Connections) -> Result<(), &'static str> {
-    let s = &mut SHARED_STREAMS.lock().unwrap();
-    let chatroom = remove_user_from_streams(stream).unwrap();
-    let announcement_message = format!("{} has left the chatroom.", addr_to_username(&stream.peer_addr().unwrap()).unwrap());
-    handle_server_announcement(chatroom, announcement_message, s, connections).unwrap();
+fn handle_leave(stream: &TcpStream) -> Result<(), &'static str> {
+    let chatroom = remove_user_from_streams(stream)?;
+    let announcement_message = format!("{} has left the chatroom.", addr_to_username(&stream.peer_addr().unwrap())?);
+    handle_server_announcement(chatroom, announcement_message)?;
     Ok(())
 }
 
 fn handle_disconnect(stream: &TcpStream) -> Result<(), &'static str> {
-    remove_user_from_streams(stream).unwrap();
+    match remove_user_from_streams(stream) {
+        Ok(_) => (),
+        Err("User is not in a chatroom") => (),
+        Err(e) => return Err(e)
+    };
     let addr = &stream.peer_addr().unwrap();
 
     // Remove user from users list
     let u = &mut USERS.lock().unwrap();
+    println!("{:?}", u);
+    println!("{}", addr);
     u.remove(addr).unwrap();
 
     // Remove connection 
     let c = &mut CONNECTIONS.lock().unwrap();
+    c.get_mut(addr).unwrap().shutdown(Shutdown::Both).unwrap();
     c.remove(addr).unwrap();
 
     Ok(())
@@ -141,7 +148,7 @@ fn handle_disconnect(stream: &TcpStream) -> Result<(), &'static str> {
 fn handle_list(stream: &TcpStream) -> Result<(), &'static str> {
     let s = &SHARED_STREAMS.lock().unwrap();
     let message = s.keys().into_iter().map(|c| c.to_string()).collect::<Vec<String>>().join(", ");
-    send_message(stream, message).unwrap();
+    send_message(stream, message)?;
     Ok(())
 }
 
@@ -165,7 +172,6 @@ fn handle_nick(stream: &TcpStream, nick: String) -> Result<(), &'static str> {
 }
 
 fn handle_help(stream: &TcpStream) -> Result<(), &'static str> {
-    let s = SHARED_STREAMS.lock().unwrap();
     let message = "Commands:\n\
                     \t\\help\n\
                     \t\\join <channel_name>\n\
@@ -174,21 +180,21 @@ fn handle_help(stream: &TcpStream) -> Result<(), &'static str> {
                     \t\\users\n\
                     \t\\leave\n\
                     \t\\nick <new_nick>";
-    send_message(stream, message.to_string()).unwrap();
+    send_message(stream, message.to_string())?;
     Ok(())
 }
 
-fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), &'static str> {
+fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
     let mut buffer = [0; 1024];
 
     println!("Shared Streams State: {:?}", SHARED_STREAMS.lock().unwrap());
     println!("Users State: {:?}", USERS.lock().unwrap());
-    println!("Connections State: {:?}", connections);
+    println!("Connections State: {:?}", CONNECTIONS.lock().unwrap());
 
     match stream.read(&mut buffer) {
 
         // Client has disconnected
-        Ok(0) => Ok(handle_disconnect(stream).unwrap()),
+        Ok(0) => panic!("Connection has disconnected"),
 
         Ok(n) => {
             let message = String::from_utf8_lossy(&buffer[0..n]);
@@ -208,7 +214,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                             return Err("Incorrect args passed to join command");
                         }
                         println!("Executing join");
-                        Ok(handle_join(args_vec[0].to_string(), stream, connections)?)
+                        Ok(handle_join(args_vec[0].to_string(), stream)?)
                     },
                     "disconnect" => {
                         if args_vec.len() != 0 {
@@ -232,7 +238,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                         if args_vec.len() != 0 {
                             return Err("Incorrect args passed to the leave command");
                         }
-                        Ok(handle_leave(stream, connections)?)
+                        Ok(handle_leave(stream)?)
                     },
                     "nick" => {
                         if args_vec.len() != 1 { 
@@ -252,7 +258,7 @@ fn parse_input(mut stream: &TcpStream, connections: &Connections) -> Result<(), 
                     }
                 }
             } else {
-                Ok(handle_broadcast(stream, message.to_string(), connections).unwrap())
+                Ok(handle_broadcast(stream, message.to_string())?)
             }
         },
         Err(n) => {
@@ -286,7 +292,15 @@ fn add_user_listener(ip: String) -> io::Result<()> {
                 USERS.lock().unwrap().insert(addr, format!("User{}", uid));
                 
                 // Add users to connections
-                CONNECTIONS.lock().unwrap().insert(addr, stream);
+                CONNECTIONS.lock().unwrap().insert(addr, stream.try_clone().unwrap());
+                thread::spawn(move || {
+                    loop {
+                        match parse_input(&stream) {
+                            Ok(_) => continue,
+                            Err(e) => send_server_message(&stream, e.to_string()).unwrap(),
+                        }
+                    }
+                });
 
                 println!("Done");
             }
@@ -300,42 +314,7 @@ fn add_user_listener(ip: String) -> io::Result<()> {
 fn main() -> io::Result<()> {
     let args = Args::parse();
     let ip = format!("{}:{}", args.ip, args.port);
-    thread::spawn(move || {
-        add_user_listener(ip).unwrap();
-    });
-
     loop {
-        let connections = &CONNECTIONS.lock().unwrap();
-        for stream in connections.values().into_iter() {
-            match parse_input(stream, &connections) {
-                Ok(_) => continue,
-                Err(e) => send_server_message(&stream, e.to_string()).unwrap(),
-            }
-        }
-    }
-}
-
-
-fn handle_client(stream: &mut TcpStream, shared_streams: Arc<Mutex<Vec<TcpStream>>>) {
-    let mut buffer = [0; 1024];
-    loop {
-        match stream.read(&mut buffer) {
-            Ok(0) => break, // Client disconnected
-            Ok(n) => {
-                let message = String::from_utf8_lossy(&buffer[0..n]);
-
-                // Broadcast the message to all other clients
-                let shared_streams = shared_streams.lock().unwrap();
-                for mut client_stream in shared_streams.iter() {
-                    if client_stream.as_raw_fd() != stream.as_raw_fd() {
-                        client_stream.write_all(message.as_bytes()).expect("Failed to write message");
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error reading from client: {}", e);
-                break;
-            }
-        }
+        add_user_listener(ip.clone()).unwrap();
     }
 }

@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::thread;
 
 fn main() -> io::Result<()> {
-    let server_address = "127.0.0.1:34256";
+    let server_address = "127.0.0.1:34257";
     let mut stream = TcpStream::connect(server_address)?;
 
     // Spawn a thread to read messages from the server.
