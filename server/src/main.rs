@@ -53,9 +53,9 @@ fn handle_join(chatroom: String, stream: TcpStream) -> Result<(), &'static str> 
 fn find_user_chatroom(stream: TcpStream) -> Result<(String, Chatroom), &'static str> {
     let s = &SHARED_STREAMS.lock().unwrap();
     let addr = stream.peer_addr().unwrap();
-    for (chat_name, chatroom) in s.into_iter() {
+    for (chat_name, chatroom) in s.iter() {
         if chatroom.contains(&addr) {
-            return Ok((chat_name, chatroom));
+            return Ok((chat_name.to_owned(), chatroom.to_owned()));
         }
     }
     return Err("User is not in a chatroom");
