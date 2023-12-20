@@ -80,7 +80,7 @@ fn handle_disconnect(stream: TcpStream) -> Result<(), &'static str> {
 }
 
 fn parse_input(mut stream: TcpStream) -> () {
-    let mut buffer = [0, 1024];
+    let mut buffer = [0, 255];
     match &stream.read(&mut buffer) {
         Ok(0) => unimplemented!("TODO client disconnected"),
         Ok(n) => {
@@ -100,14 +100,15 @@ fn parse_input(mut stream: TcpStream) -> () {
                     "disconnect" => unimplemented!("disconnect command handler"),
                     "list" => unimplemented!("list command handler"),
                     "users" => unimplemented!("users command handler"),
-                    "leave" => unimplemented!("leavel command handler")
+                    "leave" => unimplemented!("leavel command handler"),
+                    other => panic!("Unmatched command {}", other)
                 }
             } else {
                 unimplemented!("broadcast message")
             }
         },
         Err(n) => {
-            unimplemented!("Handle errors")
+            unimplemented!("Handle error: {n}")
         }
     }
 }
