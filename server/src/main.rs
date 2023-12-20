@@ -182,7 +182,7 @@ fn parse_input(mut stream: &TcpStream) -> Result<(), &'static str> {
                         }
                         Ok(handle_join(args_vec[0].to_string(), stream).unwrap())
                     },
-                    "discargo run -- --ip 127.0.0.1 --port 34255connect" => {
+                    "disconnect" => {
                         if args_vec.len() != 0 {
                             return Err("Incorrect args passed to the disconnect command");
                         }
